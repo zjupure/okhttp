@@ -44,15 +44,21 @@ class AndroidPlatform extends Platform {
   // Non-null on Android 5.0+.
   private final OptionalMethod<Socket> getAlpnSelectedProtocol;
   private final OptionalMethod<Socket> setAlpnProtocols;
+  // Non-null on Android 4.1
+  private final OptionalMethod<Socket> getNpnSelectedProtocol;
+  private final OptionalMethod<Socket> setNpnProtocols;
 
   public AndroidPlatform(Class<?> sslParametersClass, OptionalMethod<Socket> setUseSessionTickets,
       OptionalMethod<Socket> setHostname, OptionalMethod<Socket> getAlpnSelectedProtocol,
-      OptionalMethod<Socket> setAlpnProtocols) {
+      OptionalMethod<Socket> setAlpnProtocols, OptionalMethod<Socket> getNpnSelectedProtocol,
+      OptionalMethod<Socket> setNpnProtocols) {
     this.sslParametersClass = sslParametersClass;
     this.setUseSessionTickets = setUseSessionTickets;
     this.setHostname = setHostname;
     this.getAlpnSelectedProtocol = getAlpnSelectedProtocol;
     this.setAlpnProtocols = setAlpnProtocols;
+    this.getNpnSelectedProtocol = getNpnSelectedProtocol;
+    this.setNpnProtocols = setNpnProtocols;
   }
 
   @Override public void connectSocket(Socket socket, InetSocketAddress address,
@@ -101,19 +107,47 @@ class AndroidPlatform extends Platform {
       setHostname.invokeOptionalWithoutCheckedException(sslSocket, hostname);
     }
 
+    boolean alpnSupported = setAlpnProtocols != null && setAlpnProtocols.isSupported(sslSocket);
+    boolean npnSupported = setNpnProtocols != null && setNpnProtocols.isSupported(sslSocket);
+
+    if (! (alpnSupported || npnSupported)){
+      return;
+    }
+
     // Enable ALPN.
-    if (setAlpnProtocols != null && setAlpnProtocols.isSupported(sslSocket)) {
-      Object[] parameters = {concatLengthPrefixed(protocols)};
+    Object[] parameters = {concatLengthPrefixed(protocols)};
+    if (alpnSupported){
       setAlpnProtocols.invokeWithoutCheckedException(sslSocket, parameters);
     }
+
+    // Enable NPN.
+    if (npnSupported){
+      setNpnProtocols.invokeWithoutCheckedException(sslSocket, parameters);
+    }
+
   }
 
   @Override public String getSelectedProtocol(SSLSocket socket) {
-    if (getAlpnSelectedProtocol == null) return null;
-    if (!getAlpnSelectedProtocol.isSupported(socket)) return null;
+    boolean alpnSupported = getAlpnSelectedProtocol != null && getAlpnSelectedProtocol.isSupported(socket);
+    boolean npnSupported = getNpnSelectedProtocol != null && getNpnSelectedProtocol.isSupported(socket);
 
-    byte[] alpnResult = (byte[]) getAlpnSelectedProtocol.invokeWithoutCheckedException(socket);
-    return alpnResult != null ? new String(alpnResult, Util.UTF_8) : null;
+    // Prefer ALPN's result if it is present
+    if (alpnSupported){
+      byte[] alpnResult = (byte[]) getAlpnSelectedProtocol.invokeWithoutCheckedException(socket);
+      if (alpnResult != null){
+        return new String(alpnResult, Util.UTF_8);
+      }
+    }
+
+    // fallback to NPN
+    if (npnSupported){
+      byte[] npnResult = (byte[]) getNpnSelectedProtocol.invokeWithoutCheckedException(socket);
+      if (npnResult != null){
+        return new String(npnResult, Util.UTF_8);
+      }
+    }
+
+    return null;
   }
 
   @Override public void log(int level, String message, Throwable t) {
@@ -178,6 +212,8 @@ class AndroidPlatform extends Platform {
           null, "setHostname", String.class);
       OptionalMethod<Socket> getAlpnSelectedProtocol = null;
       OptionalMethod<Socket> setAlpnProtocols = null;
+      OptionalMethod<Socket> getNpnSelectedProtocol = null;
+      OptionalMethod<Socket> setNpnProtocols = null;
 
       // Attempt to find Android 5.0+ APIs.
       try {
@@ -187,8 +223,12 @@ class AndroidPlatform extends Platform {
       } catch (ClassNotFoundException ignored) {
       }
 
+      // Attempt to find Android 4.1+ NPN support
+      getNpnSelectedProtocol = new OptionalMethod<Socket>(byte[].class, "getNpnSelectedProtocol");
+      setNpnProtocols = new OptionalMethod<Socket>(null, "setNpnProtocols", byte[].class);
+
       return new AndroidPlatform(sslParametersClass, setUseSessionTickets, setHostname,
-          getAlpnSelectedProtocol, setAlpnProtocols);
+          getAlpnSelectedProtocol, setAlpnProtocols, getNpnSelectedProtocol, setNpnProtocols);
     } catch (ClassNotFoundException ignored) {
       // This isn't an Android runtime.
     }
