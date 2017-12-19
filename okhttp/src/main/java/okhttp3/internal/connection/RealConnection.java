@@ -274,7 +274,7 @@ public final class RealConnection extends Http2Connection.Listener implements Co
       ConnectionSpec connectionSpec = connectionSpecSelector.configureSecureSocket(sslSocket);
       if (connectionSpec.supportsTlsExtensions()) {
         Platform.get().configureTlsExtensions(
-            sslSocket, address.url().host(), address.protocols());
+            sslSocket, address.host(), address.protocols());
       }
 
       // Force handshake. This can throw!
@@ -282,16 +282,17 @@ public final class RealConnection extends Http2Connection.Listener implements Co
       Handshake unverifiedHandshake = Handshake.get(sslSocket.getSession());
 
       // Verify that the socket's certificates are acceptable for the target host.
-      if (!address.hostnameVerifier().verify(address.url().host(), sslSocket.getSession())) {
+      if (!address.hostnameVerifier().verify(address.host(), sslSocket.getSession())) {
         X509Certificate cert = (X509Certificate) unverifiedHandshake.peerCertificates().get(0);
-        throw new SSLPeerUnverifiedException("Hostname " + address.url().host() + " not verified:"
+        throw new SSLPeerUnverifiedException("Hostname " + address.host() + " not verified:"
+            + "\n    hostname in url: " + address.url().host()
             + "\n    certificate: " + CertificatePinner.pin(cert)
             + "\n    DN: " + cert.getSubjectDN().getName()
             + "\n    subjectAltNames: " + OkHostnameVerifier.allSubjectAltNames(cert));
       }
 
       // Check that the certificate pinner is satisfied by the certificates presented.
-      address.certificatePinner().check(address.url().host(),
+      address.certificatePinner().check(address.host(),
           unverifiedHandshake.peerCertificates());
 
       // Success! Save the handshake and the ALPN protocol.

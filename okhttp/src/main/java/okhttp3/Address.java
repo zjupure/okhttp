@@ -37,6 +37,7 @@ import static okhttp3.internal.Util.equal;
  */
 public final class Address {
   final HttpUrl url;
+  final String host;
   final Dns dns;
   final SocketFactory socketFactory;
   final Authenticator proxyAuthenticator;
@@ -48,7 +49,7 @@ public final class Address {
   final @Nullable HostnameVerifier hostnameVerifier;
   final @Nullable CertificatePinner certificatePinner;
 
-  public Address(String uriHost, int uriPort, Dns dns, SocketFactory socketFactory,
+  public Address(String uriHost, String headerHost, int uriPort, Dns dns, SocketFactory socketFactory,
       @Nullable SSLSocketFactory sslSocketFactory, @Nullable HostnameVerifier hostnameVerifier,
       @Nullable CertificatePinner certificatePinner, Authenticator proxyAuthenticator,
       @Nullable Proxy proxy, List<Protocol> protocols, List<ConnectionSpec> connectionSpecs,
@@ -61,6 +62,8 @@ public final class Address {
 
     if (dns == null) throw new NullPointerException("dns == null");
     this.dns = dns;
+
+    this.host = getHost(uriHost, headerHost);
 
     if (socketFactory == null) throw new NullPointerException("socketFactory == null");
     this.socketFactory = socketFactory;
@@ -91,6 +94,13 @@ public final class Address {
    */
   public HttpUrl url() {
     return url;
+  }
+
+  /**
+   * Returns a domain name of the origin server.
+   */
+  public String host() {
+    return host;
   }
 
   /** Returns the service that will be used to resolve IP addresses for hostnames. */
@@ -149,6 +159,27 @@ public final class Address {
   /** Returns this address's certificate pinner, or null if this is not an HTTPS address. */
   public @Nullable CertificatePinner certificatePinner() {
     return certificatePinner;
+  }
+
+  /**
+   * Returns the domain name according the uriHost and headerHost
+   * If uriHost is an IP address and headerHost exist, then return headerHost
+   */
+  private String getHost(String uriHost, String headerHost) {
+      String ipReg = "\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}";
+      String host = uriHost;
+      if (headerHost == null || headerHost.length() == 0) {
+          host = uriHost;
+      } else if (uriHost.matches(ipReg)) {
+          // IP direct, header host may contain port
+          if (headerHost.contains(":")) {
+              host = headerHost.substring(0, headerHost.lastIndexOf(':'));
+          } else {
+              host = headerHost;
+          }
+      }
+
+      return host;
   }
 
   @Override public boolean equals(@Nullable Object other) {
