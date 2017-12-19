@@ -37,6 +37,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 import okhttp3.HttpUrl;
 import okhttp3.Request;
+import okhttp3.internal.platform.Platform;
 import okio.Buffer;
 import okio.ByteString;
 import okio.Source;
@@ -198,6 +199,11 @@ public final class Util {
     } catch (NoSuchAlgorithmException | UnsupportedEncodingException e) {
       throw new AssertionError(e);
     }
+  }
+
+  /** Returns a base64url string for input bytes */
+  public static String base64urlEncode(byte[] input){
+    return Platform.get().base64urlEncode(input);
   }
 
   /** Returns a Base 64-encoded string containing a SHA-1 hash of {@code s}. */

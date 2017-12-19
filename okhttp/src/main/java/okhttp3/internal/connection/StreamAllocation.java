@@ -27,8 +27,10 @@ import okhttp3.internal.Util;
 import okhttp3.internal.framed.ErrorCode;
 import okhttp3.internal.framed.StreamResetException;
 import okhttp3.internal.http.Http1xStream;
+import okhttp3.internal.http.Http2cStream;
 import okhttp3.internal.http.Http2xStream;
 import okhttp3.internal.http.HttpStream;
+import okhttp3.internal.platform.Platform;
 
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 
@@ -101,12 +103,14 @@ public final class StreamAllocation {
       HttpStream resultStream;
       if (resultConnection.framedConnection != null) {
         resultStream = new Http2xStream(client, this, resultConnection.framedConnection);
+        Platform.get().log(Platform.INFO, "StreamAllocation Http2xStream", null);
       } else {
         resultConnection.socket().setSoTimeout(readTimeout);
         resultConnection.source.timeout().timeout(readTimeout, MILLISECONDS);
         resultConnection.sink.timeout().timeout(writeTimeout, MILLISECONDS);
-        resultStream = new Http1xStream(
+        resultStream = new Http2cStream(
             client, this, resultConnection.source, resultConnection.sink);
+        Platform.get().log(Platform.INFO, "StreamAllocation Http2cStream", null);
       }
 
       synchronized (connectionPool) {

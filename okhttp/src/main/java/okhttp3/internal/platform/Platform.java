@@ -33,6 +33,7 @@ import okhttp3.internal.tls.BasicCertificateChainCleaner;
 import okhttp3.internal.tls.CertificateChainCleaner;
 import okhttp3.internal.tls.TrustRootIndex;
 import okio.Buffer;
+import org.apache.commons.codec.binary.Base64;
 
 /**
  * Access to platform-specific features.
@@ -127,6 +128,10 @@ public class Platform {
   public void log(int level, String message, Throwable t) {
     Level logLevel = level == WARN ? Level.WARNING : Level.INFO;
     logger.log(logLevel, message, t);
+  }
+
+  public String base64urlEncode(byte[] input) {
+    return Base64.encodeBase64URLSafeString(input);
   }
 
   public boolean isCleartextTrafficPermitted(String hostname) {

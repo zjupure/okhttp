@@ -116,7 +116,7 @@ import okhttp3.internal.tls.OkHostnameVerifier;
  */
 public class OkHttpClient implements Cloneable, Call.Factory {
   private static final List<Protocol> DEFAULT_PROTOCOLS = Util.immutableList(
-      Protocol.HTTP_2, Protocol.SPDY_3, Protocol.HTTP_1_1);
+      Protocol.HTTP_2, Protocol.HTTP_h2c, Protocol.SPDY_3, Protocol.HTTP_1_1);
 
   private static final List<ConnectionSpec> DEFAULT_CONNECTION_SPECS = Util.immutableList(
       ConnectionSpec.MODERN_TLS, ConnectionSpec.COMPATIBLE_TLS, ConnectionSpec.CLEARTEXT);
@@ -195,6 +195,7 @@ public class OkHttpClient implements Cloneable, Call.Factory {
   final boolean followSslRedirects;
   final boolean followRedirects;
   final boolean retryOnConnectionFailure;
+  final boolean tryH2cUpgradeOnConnection;
   final int connectTimeout;
   final int readTimeout;
   final int writeTimeout;
@@ -240,6 +241,7 @@ public class OkHttpClient implements Cloneable, Call.Factory {
     this.followSslRedirects = builder.followSslRedirects;
     this.followRedirects = builder.followRedirects;
     this.retryOnConnectionFailure = builder.retryOnConnectionFailure;
+    this.tryH2cUpgradeOnConnection = builder.tryH2cUpgradeOnConnection;
     this.connectTimeout = builder.connectTimeout;
     this.readTimeout = builder.readTimeout;
     this.writeTimeout = builder.writeTimeout;
@@ -350,6 +352,10 @@ public class OkHttpClient implements Cloneable, Call.Factory {
     return retryOnConnectionFailure;
   }
 
+  public boolean tryH2cUpgradeOnConnection() {
+    return tryH2cUpgradeOnConnection;
+  }
+
   public Dispatcher dispatcher() {
     return dispatcher;
   }
@@ -414,6 +420,7 @@ public class OkHttpClient implements Cloneable, Call.Factory {
     boolean followSslRedirects;
     boolean followRedirects;
     boolean retryOnConnectionFailure;
+    boolean tryH2cUpgradeOnConnection;
     int connectTimeout;
     int readTimeout;
     int writeTimeout;
@@ -434,6 +441,7 @@ public class OkHttpClient implements Cloneable, Call.Factory {
       followSslRedirects = true;
       followRedirects = true;
       retryOnConnectionFailure = true;
+      tryH2cUpgradeOnConnection = false;
       connectTimeout = 10_000;
       readTimeout = 10_000;
       writeTimeout = 10_000;
@@ -462,6 +470,7 @@ public class OkHttpClient implements Cloneable, Call.Factory {
       this.followSslRedirects = okHttpClient.followSslRedirects;
       this.followRedirects = okHttpClient.followRedirects;
       this.retryOnConnectionFailure = okHttpClient.retryOnConnectionFailure;
+      this.tryH2cUpgradeOnConnection = okHttpClient.tryH2cUpgradeOnConnection;
       this.connectTimeout = okHttpClient.connectTimeout;
       this.readTimeout = okHttpClient.readTimeout;
       this.writeTimeout = okHttpClient.writeTimeout;
@@ -737,6 +746,16 @@ public class OkHttpClient implements Cloneable, Call.Factory {
      */
     public Builder retryOnConnectionFailure(boolean retryOnConnectionFailure) {
       this.retryOnConnectionFailure = retryOnConnectionFailure;
+      return this;
+    }
+
+
+    /**
+     * Configure this client to try Http Upgrade mechanism on a cleartext mode (h2c for HTTP/2)
+     * By default, this client will not execute h2c upgrade
+     */
+    public Builder tryH2cUpgradeOnConnection(boolean tryH2cUpgradeOnConnection){
+      this.tryH2cUpgradeOnConnection = tryH2cUpgradeOnConnection;
       return this;
     }
 

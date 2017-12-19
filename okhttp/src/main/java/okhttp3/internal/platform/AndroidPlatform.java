@@ -15,6 +15,7 @@
  */
 package okhttp3.internal.platform;
 
+import android.util.Base64;
 import android.util.Log;
 import java.io.IOException;
 import java.lang.reflect.Constructor;
@@ -164,6 +165,10 @@ class AndroidPlatform extends Platform {
         i = end;
       } while (i < newline);
     }
+  }
+
+  @Override public String base64urlEncode(byte[] input) {
+    return Base64.encodeToString(input, Base64.NO_WRAP | Base64.URL_SAFE);
   }
 
   @Override public boolean isCleartextTrafficPermitted(String hostname) {

@@ -17,10 +17,15 @@ package okhttp3.internal.http;
 
 import java.io.IOException;
 import java.net.ProtocolException;
+import java.net.Socket;
+
 import okhttp3.Interceptor;
+import okhttp3.Protocol;
 import okhttp3.Request;
 import okhttp3.Response;
+import okhttp3.internal.connection.RealConnection;
 import okhttp3.internal.connection.StreamAllocation;
+import okhttp3.internal.framed.FramedConnection;
 import okio.BufferedSink;
 import okio.Okio;
 import okio.Sink;
@@ -57,7 +62,40 @@ public final class CallServerInterceptor implements Interceptor {
         .receivedResponseAtMillis(System.currentTimeMillis())
         .build();
 
-    if (!forWebSocket || response.code() != 101) {
+    boolean isH2cUpgrade = !forWebSocket && response.code() == 101
+            && "h2c".equals(response.header("Upgrade"));
+
+    if (isH2cUpgrade && httpStream instanceof Http1xStream){
+      // Upgrade to HTTP2
+      RealConnection connection = (RealConnection) chain.connection();
+      Socket socket = connection.socket;
+
+      socket.setSoTimeout(0); // Framed connection timeouts are set per-stream.
+      FramedConnection framedConnection = new FramedConnection.Builder(true)
+              .socket(socket, request.url().host(), connection.source, connection.sink)
+              .protocol(Protocol.HTTP_h2c)
+              .listener(connection)
+              .build();
+      framedConnection.start();
+
+      // Only assign the framed connection once the preface has been sent successfully.
+      connection.allocationLimit = framedConnection.maxConcurrentStreams();
+      connection.framedConnection = framedConnection;
+      ((Http1xStream) httpStream).setFrameConnection(framedConnection);  // update the HttpStream
+
+      // handle the binary frame headers and data
+      Response h2cResponse = httpStream.readResponseHeaders()
+              .request(request)
+              .handshake(streamAllocation.connection().handshake())
+              .sentRequestAtMillis(sentRequestMillis)
+              .receivedResponseAtMillis(System.currentTimeMillis())
+              .build();
+      // open the response body
+      response = h2cResponse.newBuilder()
+              .body(httpStream.openResponseBody(h2cResponse))
+              .build();
+
+    } else if (!forWebSocket || response.code() != 101) {
       response = response.newBuilder()
           .body(httpStream.openResponseBody(response))
           .build();

@@ -27,10 +27,12 @@ import okhttp3.Request;
 import okhttp3.RequestBody;
 import okhttp3.Response;
 import okhttp3.internal.Version;
+import okhttp3.internal.framed.Settings;
 import okio.GzipSource;
 import okio.Okio;
 
 import static okhttp3.internal.Util.hostHeader;
+import static okhttp3.internal.Util.base64urlEncode;
 
 /**
  * Bridges from application code to network code. First it builds a network request from a user
@@ -71,6 +73,13 @@ public final class BridgeInterceptor implements Interceptor {
 
     if (userRequest.header("Connection") == null) {
       requestBuilder.header("Connection", "Keep-Alive");
+    }
+
+    if ("h2c".equals(userRequest.header("Upgrade"))){
+      // h2c upgrade
+      requestBuilder.header("Connection", "Upgrade, HTTP2-Settings");
+      Settings settings = Settings.createClientDefaultSettings();
+      requestBuilder.header("HTTP2-Settings", base64urlEncode(settings.getPayload()));
     }
 
     // If we add an "Accept-Encoding: gzip" header field we're responsible for also decompressing

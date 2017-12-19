@@ -135,7 +135,9 @@ public final class FramedConnection implements Closeable {
     nextStreamId = builder.client ? 1 : 2;
     if (builder.client && protocol == Protocol.HTTP_2) {
       nextStreamId += 2; // In HTTP/2, 1 on client is reserved for Upgrade.
-    }
+    } //else if (builder.client && protocol == Protocol.HTTP_h2c) {
+      //nextStreamId = 1;  // In HTTP Upgrade mechanism, id=1 for upgrade response
+    //}
 
     nextPingId = builder.client ? 1 : 2;
 
@@ -149,7 +151,7 @@ public final class FramedConnection implements Closeable {
 
     hostname = builder.hostname;
 
-    if (protocol == Protocol.HTTP_2) {
+    if (isHttp2()) {
       variant = new Http2();
       // Like newSingleThreadExecutor, except lazy creates the thread.
       pushExecutor = new ThreadPoolExecutor(0, 1, 60, TimeUnit.SECONDS,
@@ -174,6 +176,11 @@ public final class FramedConnection implements Closeable {
   /** The protocol as selected using ALPN. */
   public Protocol getProtocol() {
     return protocol;
+  }
+
+  /** Returns true if the frame connection works on HTTP2 channel */
+  public boolean isHttp2(){
+    return protocol == Protocol.HTTP_2 || protocol == Protocol.HTTP_h2c;
   }
 
   /**
@@ -207,7 +214,7 @@ public final class FramedConnection implements Closeable {
   public FramedStream pushStream(int associatedStreamId, List<Header> requestHeaders, boolean out)
       throws IOException {
     if (client) throw new IllegalStateException("Client cannot push requests.");
-    if (protocol != Protocol.HTTP_2) throw new IllegalStateException("protocol != HTTP_2");
+    if (protocol != Protocol.HTTP_2 && protocol != Protocol.HTTP_h2c) throw new IllegalStateException("protocol != HTTP_2");
     return newStream(associatedStreamId, requestHeaders, out, false);
   }
 
@@ -241,13 +248,18 @@ public final class FramedConnection implements Closeable {
         nextStreamId += 2;
         stream = new FramedStream(streamId, this, outFinished, inFinished, requestHeaders);
         flushHeaders = !out || bytesLeftInWriteWindow == 0L || stream.bytesLeftInWriteWindow == 0L;
+        flushHeaders = flushHeaders && requestHeaders.size() > 0;
         if (stream.isOpen()) {
           streams.put(streamId, stream);
         }
       }
       if (associatedStreamId == 0) {
-        frameWriter.synStream(outFinished, inFinished, streamId, associatedStreamId,
-            requestHeaders);
+        if (requestHeaders.size() > 0) {
+          frameWriter.synStream(outFinished, inFinished, streamId, associatedStreamId,
+                  requestHeaders);
+        } else {
+          Platform.get().log(INFO, "associated stream id=0 and request headers are empty, might be a h2c upgrade request", null);
+        }
       } else if (client) {
         throw new IllegalArgumentException("client streams shouldn't have associated stream IDs");
       } else { // HTTP/2 has a PUSH_PROMISE frame.
@@ -704,7 +716,7 @@ public final class FramedConnection implements Closeable {
         int priorWriteWindowSize = peerSettings.getInitialWindowSize(DEFAULT_INITIAL_WINDOW_SIZE);
         if (clearPrevious) peerSettings.clear();
         peerSettings.merge(newSettings);
-        if (getProtocol() == Protocol.HTTP_2) {
+        if (isHttp2()) {
           applyAndAckSettings(newSettings);
         }
         int peerInitialWindowSize = peerSettings.getInitialWindowSize(DEFAULT_INITIAL_WINDOW_SIZE);
@@ -814,7 +826,7 @@ public final class FramedConnection implements Closeable {
 
   /** Even, positive numbered streams are pushed streams in HTTP/2. */
   private boolean pushedStream(int streamId) {
-    return protocol == Protocol.HTTP_2 && streamId != 0 && (streamId & 1) == 0;
+    return isHttp2() && streamId != 0 && (streamId & 1) == 0;
   }
 
   // Guarded by this.

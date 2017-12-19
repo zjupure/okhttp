@@ -31,22 +31,16 @@ import java.util.concurrent.TimeUnit;
 import javax.net.ssl.SSLPeerUnverifiedException;
 import javax.net.ssl.SSLSocket;
 import javax.net.ssl.SSLSocketFactory;
-import okhttp3.Address;
-import okhttp3.CertificatePinner;
-import okhttp3.Connection;
-import okhttp3.ConnectionSpec;
-import okhttp3.Handshake;
-import okhttp3.HttpUrl;
-import okhttp3.Protocol;
-import okhttp3.Request;
-import okhttp3.Response;
-import okhttp3.Route;
+
+import okhttp3.*;
 import okhttp3.internal.Util;
 import okhttp3.internal.Version;
 import okhttp3.internal.framed.ErrorCode;
 import okhttp3.internal.framed.FramedConnection;
 import okhttp3.internal.framed.FramedStream;
+import okhttp3.internal.framed.Settings;
 import okhttp3.internal.http.Http1xStream;
+import okhttp3.internal.http.Http2cStream;
 import okhttp3.internal.http.HttpHeaders;
 import okhttp3.internal.platform.Platform;
 import okhttp3.internal.tls.OkHostnameVerifier;
@@ -58,6 +52,7 @@ import okio.Source;
 import static java.net.HttpURLConnection.HTTP_OK;
 import static java.net.HttpURLConnection.HTTP_PROXY_AUTH;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
+import static okhttp3.internal.Util.base64urlEncode;
 import static okhttp3.internal.Util.closeQuietly;
 
 public final class RealConnection extends FramedConnection.Listener implements Connection {
@@ -128,7 +123,6 @@ public final class RealConnection extends FramedConnection.Listener implements C
         } else {
           routeException.addConnectException(e);
         }
-
         if (!connectionRetryEnabled || !connectionSpecSelector.connectionFailed(e)) {
           throw routeException;
         }
@@ -196,6 +190,8 @@ public final class RealConnection extends FramedConnection.Listener implements C
       ConnectionSpecSelector connectionSpecSelector) throws IOException {
     if (route.address().sslSocketFactory() != null) {
       connectTls(readTimeout, writeTimeout, connectionSpecSelector);
+    } else if (route.address().tryH2cUpgradeOnConnection()){
+      upgradeH2c(readTimeout, writeTimeout);
     } else {
       protocol = Protocol.HTTP_1_1;
       socket = rawSocket;
@@ -214,6 +210,8 @@ public final class RealConnection extends FramedConnection.Listener implements C
       // Only assign the framed connection once the preface has been sent successfully.
       this.allocationLimit = framedConnection.maxConcurrentStreams();
       this.framedConnection = framedConnection;
+    } else if (protocol == Protocol.HTTP_h2c){
+      this.allocationLimit = framedConnection.maxConcurrentStreams();
     } else {
       this.allocationLimit = 1;
     }
@@ -344,6 +342,90 @@ public final class RealConnection extends FramedConnection.Listener implements C
         .header("Proxy-Connection", "Keep-Alive")
         .header("User-Agent", Version.userAgent()) // For HTTP/1.0 proxies like Squid.
         .build();
+  }
+
+  /**
+   * Upgrade the HTTP/1.1 to HTTP/2 by send an option request first
+   */
+  private void upgradeH2c(int readTimeout, int writeTimeout) throws IOException{
+
+    String requestLine = "OPTIONS / HTTP/1.1";
+    //String requestLine = "GET / HTTP/1.1";
+    Request upgradeRequest = createH2cOptionsRequest();
+    OkHttpClient client = new OkHttpClient.Builder()
+            .readTimeout(readTimeout, MILLISECONDS)
+            .writeTimeout(writeTimeout, MILLISECONDS)
+            .build();
+    Http2cStream upgradeConnection = new Http2cStream(client, null, source, sink);
+    source.timeout().timeout(readTimeout, MILLISECONDS);
+    sink.timeout().timeout(writeTimeout, MILLISECONDS);
+    upgradeConnection.writeRequest(upgradeRequest.headers(), requestLine);
+    upgradeConnection.finishRequest();
+
+    Response response = upgradeConnection.readResponse().request(upgradeRequest).build();
+    Source body = null;
+    switch (response.code()){
+      case 101:
+        if ("h2c".equals(response.header("Upgrade"))){
+          // upgrade HTTP/2 success, consume the data
+          protocol = Protocol.HTTP_h2c;
+          socket = rawSocket;
+
+          socket.setSoTimeout(0); // Framed connection timeouts are set per-stream.
+          FramedConnection framedConnection = new FramedConnection.Builder(true)
+                  .socket(socket, route.address().url().host(), source, sink)
+                  .protocol(protocol)
+                  .listener(this)
+                  .build();
+          framedConnection.start();
+
+          // Only assign the framed connection once the preface has been sent successfully.
+          this.allocationLimit = framedConnection.maxConcurrentStreams();
+          this.framedConnection = framedConnection;
+          upgradeConnection.setFrameConnection(framedConnection);
+
+          // Consumer the response
+          Response h2cResponse = upgradeConnection.readResponseHeaders()
+                  .request(upgradeRequest)
+                  .build();
+          response = h2cResponse.newBuilder()
+                  .body(upgradeConnection.openResponseBody(h2cResponse))
+                  .build();
+
+          body = response.body().source();
+          break;
+        }
+      default:
+        protocol = Protocol.HTTP_1_1;
+        socket = rawSocket;
+
+        response = response.newBuilder()
+                .body(upgradeConnection.openResponseBody(response))
+                .build();
+        body = response.body().source();
+        break;
+    }
+
+    if (body != null) {
+      // We need to consume this response
+      Util.skipAll(body, Integer.MAX_VALUE, TimeUnit.MILLISECONDS);
+      body.close();
+    }
+  }
+
+  /**
+   * Returns a OPTIONS request used for h2c upgrade
+   */
+  private Request createH2cOptionsRequest(){
+    Settings settings = Settings.createClientDefaultSettings();
+    return new Request.Builder()
+            .url(route.address().url())
+            .header("Host", Util.hostHeader(route.address().url(), true))
+            .header("Connection", "Upgrade, HTTP2-Settings")
+            .header("Upgrade", "h2c")
+            .header("HTTP2-Settings", base64urlEncode(settings.getPayload()))
+            .header("User-Agent", Version.userAgent()) // For HTTP/1.0 proxies like Squid.
+            .build();
   }
 
   @Override public Route route() {

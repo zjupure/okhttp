@@ -189,15 +189,18 @@ public final class RetryAndFollowUpInterceptor implements Interceptor {
     SSLSocketFactory sslSocketFactory = null;
     HostnameVerifier hostnameVerifier = null;
     CertificatePinner certificatePinner = null;
+    boolean tryH2cUpgradeOnConnection = client.tryH2cUpgradeOnConnection();
     if (url.isHttps()) {
       sslSocketFactory = client.sslSocketFactory();
       hostnameVerifier = client.hostnameVerifier();
       certificatePinner = client.certificatePinner();
+      tryH2cUpgradeOnConnection = false;
     }
 
     return new Address(url.host(), request.header("Host"), url.port(), client.dns(), client.socketFactory(),
         sslSocketFactory, hostnameVerifier, certificatePinner, client.proxyAuthenticator(),
-        client.proxy(), client.protocols(), client.connectionSpecs(), client.proxySelector());
+        client.proxy(), client.protocols(), client.connectionSpecs(), client.proxySelector(),
+        tryH2cUpgradeOnConnection);
   }
 
   /**

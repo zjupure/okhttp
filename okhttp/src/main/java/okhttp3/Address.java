@@ -47,11 +47,13 @@ public final class Address {
   final SSLSocketFactory sslSocketFactory;
   final HostnameVerifier hostnameVerifier;
   final CertificatePinner certificatePinner;
+  final boolean tryH2cUpgradeOnConnection;
 
   public Address(String uriHost, String headerHost, int uriPort, Dns dns, SocketFactory socketFactory,
       SSLSocketFactory sslSocketFactory, HostnameVerifier hostnameVerifier,
       CertificatePinner certificatePinner, Authenticator proxyAuthenticator, Proxy proxy,
-      List<Protocol> protocols, List<ConnectionSpec> connectionSpecs, ProxySelector proxySelector) {
+      List<Protocol> protocols, List<ConnectionSpec> connectionSpecs, ProxySelector proxySelector,
+      boolean tryH2cUpgradeOnConnection) {
     this.url = new HttpUrl.Builder()
         .scheme(sslSocketFactory != null ? "https" : "http")
         .host(uriHost)
@@ -84,6 +86,8 @@ public final class Address {
     this.sslSocketFactory = sslSocketFactory;
     this.hostnameVerifier = hostnameVerifier;
     this.certificatePinner = certificatePinner;
+
+    this.tryH2cUpgradeOnConnection = tryH2cUpgradeOnConnection;
   }
 
   /**
@@ -178,6 +182,11 @@ public final class Address {
     }
 
     return host;
+  }
+
+  /** Returns this address need try h2c upgrade on connection or not */
+  public boolean tryH2cUpgradeOnConnection() {
+    return tryH2cUpgradeOnConnection;
   }
 
   @Override public boolean equals(Object other) {

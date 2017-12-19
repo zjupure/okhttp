@@ -59,7 +59,15 @@ public enum Protocol {
    * that enforce this may send an exception message including the string {@code
    * INADEQUATE_SECURITY}.
    */
-  HTTP_2("h2");
+  HTTP_2("h2"),
+
+  /**
+   * The IETF's binary-framed protocol that includes header compression, multiplexing multiple
+   * requests on the same socket, and server-push. HTTP/1.1 semantics are layered on HTTP/2.
+   *
+   * <p>HTTP/2 h2c protocol run over cleartext TCP and use HTTP Upgrade mechanism.
+   */
+  HTTP_h2c("h2c");
 
   private final String protocol;
 
@@ -77,6 +85,7 @@ public enum Protocol {
     if (protocol.equals(HTTP_1_0.protocol)) return HTTP_1_0;
     if (protocol.equals(HTTP_1_1.protocol)) return HTTP_1_1;
     if (protocol.equals(HTTP_2.protocol)) return HTTP_2;
+    if (protocol.equals(HTTP_h2c.protocol)) return HTTP_h2c;
     if (protocol.equals(SPDY_3.protocol)) return SPDY_3;
     throw new IOException("Unexpected protocol: " + protocol);
   }

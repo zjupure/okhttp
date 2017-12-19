@@ -28,6 +28,7 @@ import okhttp3.internal.Internal;
 import okhttp3.internal.Util;
 import okhttp3.internal.connection.RealConnection;
 import okhttp3.internal.connection.StreamAllocation;
+import okhttp3.internal.framed.FramedConnection;
 import okio.Buffer;
 import okio.BufferedSink;
 import okio.BufferedSource;
@@ -61,7 +62,7 @@ import static okhttp3.internal.http.StatusLine.HTTP_CONTINUE;
  * Exchanges that do not have a response body can call {@link #newFixedLengthSource(long)
  * newFixedLengthSource(0)} and may skip reading and closing that source.
  */
-public final class Http1xStream implements HttpStream {
+public class Http1xStream implements HttpStream {
   private static final int STATE_IDLE = 0; // Idle connections are ready to write request headers.
   private static final int STATE_OPEN_REQUEST_BODY = 1;
   private static final int STATE_WRITING_REQUEST_BODY = 2;
@@ -71,9 +72,9 @@ public final class Http1xStream implements HttpStream {
   private static final int STATE_CLOSED = 6;
 
   /** The client that configures this stream. May be null for HTTPS proxy tunnels. */
-  private final OkHttpClient client;
+  protected final OkHttpClient client;
   /** The stream allocation that owns this stream. May be null for HTTPS proxy tunnels. */
-  private final StreamAllocation streamAllocation;
+  protected final StreamAllocation streamAllocation;
 
   private final BufferedSource source;
   private final BufferedSink sink;
@@ -85,6 +86,11 @@ public final class Http1xStream implements HttpStream {
     this.streamAllocation = streamAllocation;
     this.source = source;
     this.sink = sink;
+  }
+
+  /** Set FrameConnection if the HTTP/1.1 can upgrade to HTTP/2 */
+  public void setFrameConnection(FramedConnection frameConnection){
+
   }
 
   @Override public Sink createRequestBody(Request request, long contentLength) {

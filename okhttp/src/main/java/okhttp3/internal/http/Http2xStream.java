@@ -60,6 +60,7 @@ public final class Http2xStream implements HttpStream {
   private static final ByteString TE = ByteString.encodeUtf8("te");
   private static final ByteString ENCODING = ByteString.encodeUtf8("encoding");
   private static final ByteString UPGRADE = ByteString.encodeUtf8("upgrade");
+  private static final ByteString HTTP2_SETTINGS = ByteString.encodeUtf8("http2-settings");
 
   /** See http://www.chromium.org/spdy/spdy-protocol/spdy-protocol-draft3-1#TOC-3.2.1-Request. */
   private static final List<ByteString> SPDY_3_SKIPPED_REQUEST_HEADERS = Util.immutableList(
@@ -91,6 +92,7 @@ public final class Http2xStream implements HttpStream {
       TRANSFER_ENCODING,
       ENCODING,
       UPGRADE,
+      HTTP2_SETTINGS,
       TARGET_METHOD,
       TARGET_PATH,
       TARGET_SCHEME,
@@ -127,7 +129,7 @@ public final class Http2xStream implements HttpStream {
     if (stream != null) return;
 
     boolean permitsRequestBody = HttpMethod.permitsRequestBody(request.method());
-    List<Header> requestHeaders = framedConnection.getProtocol() == Protocol.HTTP_2
+    List<Header> requestHeaders = framedConnection.isHttp2()
         ? http2HeadersList(request)
         : spdy3HeadersList(request);
     boolean hasResponseBody = true;
@@ -141,9 +143,11 @@ public final class Http2xStream implements HttpStream {
   }
 
   @Override public Response.Builder readResponseHeaders() throws IOException {
-    return framedConnection.getProtocol() == Protocol.HTTP_2
+    Response.Builder builder = framedConnection.isHttp2()
         ? readHttp2HeadersList(stream.getResponseHeaders())
         : readSpdy3HeadersList(stream.getResponseHeaders());
+    builder.protocol(framedConnection.getProtocol());
+    return builder;
   }
 
   /**

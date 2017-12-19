@@ -236,4 +236,43 @@ public final class Settings {
       set(i, other.flags(i), other.get(i));
     }
   }
+
+  /**
+   * Return payload bytes of a settings
+   */
+  public byte[] getPayload(){
+    int length = size() * 6;  // pay load
+    byte[] payload = new byte[length];
+
+    int index = 0;
+    for (int i = 0; i < Settings.COUNT; i++) {
+      if (!isSet(i)) continue;
+      int id = i;
+      if (id == 4){
+        id = 3;  // SETTINGS_MAX_CONCURRENT_STREAMS renumbered.
+      } else if (id == 7){
+        id = 4;  // SETTINGS_INITIAL_WINDOW_SIZE renumbered.
+      }
+      // 16 bit identify
+      payload[index++] = (byte)((id >>> 8) & 0xff);
+      payload[index++] = (byte)(id & 0xff);
+      // 32 bit value
+      int value = get(id);
+      payload[index++] = (byte)((value >>> 24) & 0xff);
+      payload[index++] = (byte)((value >>> 16) & 0xff);
+      payload[index++] = (byte)((value >>> 8) & 0xff);
+      payload[index++] = (byte)(value & 0xff);
+    }
+
+    return payload;
+  }
+
+
+  /** return a client default settings */
+  public static Settings createClientDefaultSettings(){
+    Settings settings = new Settings();
+    settings.set(Settings.INITIAL_WINDOW_SIZE, 0, DEFAULT_INITIAL_WINDOW_SIZE);
+
+    return settings;
+  }
 }
