@@ -36,6 +36,7 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 import okhttp3.HttpUrl;
+import okhttp3.Request;
 import okio.Buffer;
 import okio.ByteString;
 import okio.Source;
@@ -277,6 +278,17 @@ public final class Util {
       }
     }
     return result;
+  }
+
+  public static String hostHeader(Request request) {
+    String ipReg = "\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}";
+    String host = request.header("Host");
+    if (host == null || host.length() == 0
+      || !request.url().host().matches(ipReg)) {  // Not ip
+      host = hostHeader(request.url(), false);
+    }
+
+    return host;
   }
 
   public static String hostHeader(HttpUrl url, boolean includeDefaultPort) {
